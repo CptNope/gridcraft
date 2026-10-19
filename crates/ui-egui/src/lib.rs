@@ -1106,6 +1106,9 @@ impl SheetApp {
         if self.backstage.is_none() {
             self.ribbon_keys(&ctx);
         }
+        if cfg!(target_arch = "wasm32") && ctx.content_rect().width() < 720.0 {
+            self.mobile_ui(ui);
+        } else {
         ribbon::title_bar(self, ui);
         if self.backstage.is_some() {
             // File tab: the Backstage view replaces everything below the title bar.
@@ -1127,6 +1130,7 @@ impl SheetApp {
                 grid::show(self, ui);
                 self.perf.grid_ms = now_ms() - g0;
             });
+        }
         }
         dialogs::show(self, &ctx);
         widgets::message_box(self, &ctx);
@@ -1164,6 +1168,52 @@ impl SheetApp {
                 self.grid.last_title = Some(title);
             }
         }
+    }
+
+    /// Compact browser phone layout, keeping the sheet clear of desktop-width controls.
+    fn mobile_ui(&mut self, ui: &mut egui::Ui) {
+        let t = theme::Tokens::get(ui.ctx());
+        if self.backstage.is_some() {
+            backstage::show_phone(self, ui);
+            return;
+        }
+        let id = egui::Id::new("gridcraft-mobile-ribbon");
+        let mut tools = ui.ctx().data(|d| d.get_temp::<bool>(id)).unwrap_or(false);
+        egui::Panel::top("gridcraft-mobile-actions").exact_size(48.0)
+            .frame(egui::Frame::NONE.fill(t.window).inner_margin(egui::Margin::symmetric(6, 6)))
+            .show(ui, |ui| {
+                egui::ScrollArea::horizontal().id_salt("gridcraft-mobile-actions-scroll")
+                    .scroll_bar_visibility(egui::scroll_area::ScrollBarVisibility::AlwaysHidden)
+                    .show(ui, |ui| {
+                        ui.horizontal(|ui| {
+                            if ui.button("File").clicked() {
+                                self.open_backstage(backstage::Page::Home);
+                            }
+                            if ui.button("Open").clicked() {
+                                self.run_or_alert("file.open", json!({}));
+                            }
+                            if ui.button("Save").clicked() && self.commit_edit(0, 0, false, false) {
+                                self.run_or_alert("file.save", json!({}));
+                            }
+                            if ui.button("Undo").clicked() {
+                                self.run_or_alert("edit.undo", json!({}));
+                            }
+                            if ui.button("Redo").clicked() {
+                                self.run_or_alert("edit.redo", json!({}));
+                            }
+                            if ui.selectable_label(tools, "Tools").clicked() {
+                                tools = !tools;
+                            }
+                        });
+                    });
+            });
+        ui.ctx().data_mut(|d| d.insert_temp(id, tools));
+        if tools { ribbon::show(self, ui); }
+        if self.session.prefs.formula_bar { formula_bar::show(self, ui); }
+        tabs::sheet_tabs(self, ui);
+        egui::CentralPanel::default().frame(egui::Frame::NONE.fill(t.grid_bg)).show(ui, |ui| {
+            grid::show(self, ui);
+        });
     }
 
     fn ribbon_keys(&mut self, ctx: &egui::Context) {

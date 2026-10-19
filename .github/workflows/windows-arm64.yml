@@ -6,8 +6,6 @@ name: Windows ARM64
 
 # Builds run only from the `release` branch (a manual run from another branch is skipped).
 on:
-  push:
-    branches: [release]
   workflow_dispatch:
 
 concurrency:

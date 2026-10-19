@@ -234,6 +234,68 @@ pub fn show(app: &mut SheetApp, ui: &mut Ui) {
     }
 }
 
+/// Compact phone File screen; actions reuse the same Backstage workflow as desktop.
+pub fn show_phone(app: &mut SheetApp, ui: &mut Ui) {
+    let Some(mut bs) = app.backstage.take() else { return };
+    let t = Tokens::get(ui.ctx());
+    let lang = app.ui.language;
+    let mut out = Outcome::default();
+    egui::Panel::top("gridcraft-phone-file-nav").exact_size(48.0)
+        .frame(egui::Frame::NONE.fill(t.window).inner_margin(egui::Margin::same(6)))
+        .show(ui, |ui| {
+            ui.horizontal(|ui| {
+                if ui.button("‹ Back").clicked() { out.close = true; }
+                let choices = [Page::Home, Page::New, Page::Open, Page::Info,
+                    Page::SaveAs, Page::Print, Page::Export, Page::Options];
+                egui::ComboBox::from_id_salt("gridcraft-phone-file-page")
+                    .selected_text(lang.tr(bs.page.label()))
+                    .width((ui.available_width() - 100.0).max(110.0))
+                    .show_ui(ui, |ui| {
+                        for page in choices {
+                            if ui.selectable_label(bs.page == page, lang.tr(page.label())).clicked() {
+                                out.page = Some(page);
+                            }
+                        }
+                    });
+                if ui.button("Save").clicked() { save(app, &mut out); }
+            });
+        });
+    if let Some(page) = out.page.take() { bs.page = page; }
+    egui::CentralPanel::default().frame(egui::Frame::NONE.fill(t.ribbon))
+        .show(ui, |ui| {
+            egui::ScrollArea::vertical().id_salt("gridcraft-phone-file-scroll")
+                .auto_shrink([false, false]).show(ui, |ui| {
+                    egui::Frame::NONE.inner_margin(egui::Margin::symmetric(12, 12))
+                        .show(ui, |ui| {
+                            ui.set_max_width(ui.available_width());
+                            ui.label(RichText::new(lang.tr(bs.page.label()))
+                                .font(theme::ui_font(21.0)).color(t.text));
+                            ui.add_space(12.0);
+                            match bs.page {
+                                Page::Home => {
+                                    if ui.button(lang.tr("Blank workbook")).clicked() {
+                                        app.run_or_alert("file.new", json!({}));
+                                        out.close = true;
+                                    }
+                                    if ui.button(lang.tr("Open")).clicked() {
+                                        app.run_or_alert("file.open", json!({}));
+                                    }
+                                }
+                                Page::New => new_page(app, ui, &mut out),
+                                Page::Open => open_page(app, ui, &mut bs, &mut out),
+                                Page::Info => info(app, ui, &mut bs),
+                                Page::SaveAs => save_as(app, ui, &mut bs, &mut out),
+                                Page::Print => print(app, ui, &mut bs, &mut out),
+                                Page::Export => export(app, ui, &mut out),
+                                Page::Options => options(app, ui),
+                            }
+                        });
+                });
+        });
+    if out.close { app.backstage = None; }
+    else if app.backstage.is_none() { app.backstage = Some(bs); }
+}
+
 /// Save: saves a workbook that has a file and returns to the sheet; a new workbook goes to the
 /// Save As page first, like Excel's.
 fn save(app: &mut SheetApp, out: &mut Outcome) {
